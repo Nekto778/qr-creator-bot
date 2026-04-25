@@ -64,3 +64,6 @@ def pe(name: str) -> str:
 
 def ec(name: str) -> str:
     return PREMIUM[name][0]
+
+
+EID = {name: eid for name, (char, eid) in PREMIUM.items()}
