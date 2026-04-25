@@ -14,7 +14,8 @@ class Database:
                 username TEXT,
                 first_name TEXT,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_blocked INTEGER DEFAULT 0
+                is_blocked INTEGER DEFAULT 0,
+                language TEXT DEFAULT 'en'
             );
             CREATE TABLE IF NOT EXISTS qr_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,12 +42,32 @@ class Database:
         """)
         await self.db.commit()
 
-    async def add_user(self, user_id, username, first_name):
+    async def add_user(self, user_id, username, first_name, language="en"):
         await self.db.execute(
-            "INSERT OR IGNORE INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
-            (user_id, username, first_name),
+            "INSERT OR IGNORE INTO users (user_id, username, first_name, language) VALUES (?, ?, ?, ?)",
+            (user_id, username, first_name, language),
         )
         await self.db.commit()
+
+    async def get_user_lang(self, user_id) -> str:
+        async with self.db.execute(
+            "SELECT language FROM users WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else "en"
+
+    async def set_user_lang(self, user_id, language):
+        await self.db.execute(
+            "UPDATE users SET language = ? WHERE user_id = ?",
+            (language, user_id),
+        )
+        await self.db.commit()
+
+    async def user_exists(self, user_id) -> bool:
+        async with self.db.execute(
+            "SELECT 1 FROM users WHERE user_id = ?", (user_id,)
+        ) as cursor:
+            return await cursor.fetchone() is not None
 
     async def block_user(self, user_id, blocked=True):
         await self.db.execute(

@@ -24,3 +24,7 @@ class AdminBroadcast(StatesGroup):
 
 class AdminChannels(StatesGroup):
     entering_channel = State()
+
+
+class LanguageSelect(StatesGroup):
+    choosing = State()

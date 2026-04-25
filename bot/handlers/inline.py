@@ -22,7 +22,7 @@ async def inline_qr(query: InlineQuery, bot: Bot):
         await query.answer(
             [],
             cache_time=10,
-            switch_pm_text="⚡ Open bot to generate QR",
+            switch_pm_text="⚡ QR Generator",
             switch_pm_parameter="start",
         )
         return
@@ -70,9 +70,9 @@ async def inline_qr(query: InlineQuery, bot: Bot):
         InlineQueryResultArticle(
             id=cache_key[:8],
             title="⚡ QR Code",
-            description=f"Generate QR for: {text[:50]}",
+            description=f"QR: {text[:50]}",
             input_message_content=InputTextMessageContent(
-                message_text=f"⚡ QR Code for: <code>{text}</code>",
+                message_text=f"⚡ QR Code: <code>{text}</code>",
                 parse_mode="HTML",
             ),
         )

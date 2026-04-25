@@ -4,32 +4,18 @@ from aiogram.types import CallbackQuery, Message, InputMediaPhoto, BufferedInput
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from ..states import QRGeneration
+from ..i18n import t, TYPE_NAMES, TYPE_PROMPTS
 from ..keyboards import (
     qr_type_kb, customize_kb, fill_color_kb, bg_color_kb,
     gradient_kb, dot_style_kb, format_kb, icon_kb,
     wifi_enc_kb, main_menu_kb, subscription_kb,
 )
-from ..emojis import emoji, ec
 from ..config import ADMINS
 from ..database import db
 from ..services.qr_engine import qr_engine, encode_qr_data
 from ..services.subscription import check_subscriptions
 
 router = Router()
-
-TYPE_PROMPTS = {
-    "url": "🔗 Send me a URL (e.g., https://example.com):",
-    "text": "📝 Send me the text to encode:",
-    "phone": "📞 Send me a phone number (e.g., +1234567890):",
-    "email": "📧 Send me an email address:",
-    "sms": "💬 Send phone:message (e.g., +1234567890:Hello):",
-}
-
-TYPE_NAMES = {
-    "url": "🔗 Link", "text": "📝 Text", "phone": "📞 Phone",
-    "email": "📧 Email", "wifi": "📶 WiFi", "vcard": "👤 Contact",
-    "sms": "💬 SMS",
-}
 
 
 def build_settings(data: dict, force_png: bool = False) -> dict:
@@ -53,8 +39,9 @@ def build_settings(data: dict, force_png: bool = False) -> dict:
     }
 
 
-def fmt_text(data: dict) -> str:
-    qr_type = TYPE_NAMES.get(data.get("qr_type", ""), "QR")
+def fmt_text(data: dict, lang: str) -> str:
+    qr_type_key = data.get("qr_type", "")
+    qr_type = TYPE_NAMES.get(qr_type_key, {}).get(lang, "QR")
     fill = data.get("fill_color", "#000000")
     bg = "Transparent" if data.get("bg_transparent") else data.get("bg_color", "#FFFFFF")
     grad = "✅" if data.get("gradient_enabled") else "❌"
@@ -62,73 +49,72 @@ def fmt_text(data: dict) -> str:
     dot = data.get("dot_style", "square").title()
     fmt = data.get("format", "png").upper()
     icon = "✅" if data.get("icon_path") else "❌"
-    return (
-        f"🎨 {ec('gear')} QR Settings\n\n"
-        f"📋 Type: {qr_type}\n"
-        f"🎨 Fill: <code>{fill}</code>\n"
-        f"🖼 BG: <code>{bg}</code>\n"
-        f"🌈 Gradient: {grad}  |  BG Grad: {bg_grad}\n"
-        f"⬛ Dot: {dot}  |  📄 Format: {fmt}\n"
-        f"🖼 Icon: {icon}\n\n"
-        f"{ec('lightning')} Customize or generate!"
-    )
+    return t("qr_settings", lang,
+             qr_type=qr_type, fill=fill, bg=bg,
+             grad=grad, bg_grad=bg_grad, dot=dot, fmt=fmt, icon=icon)
 
 
 async def show_customize(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
+    lang = await db.get_user_lang(callback.from_user.id)
     qr_data = data.get("qr_data", "")
     if not qr_data:
-        await callback.message.edit_text("Error. Start over.", reply_markup=main_menu_kb())
+        await callback.message.edit_text(
+            t("error_start_over", lang),
+            reply_markup=main_menu_kb(lang, callback.from_user.id in ADMINS),
+        )
         await state.clear()
         return
     settings = build_settings(data, force_png=True)
     img = qr_engine.generate(qr_data, settings)
-    text = fmt_text(data)
+    text = fmt_text(data, lang)
     media = InputMediaPhoto(
         media=BufferedInputFile(img.getvalue(), "qr_preview.png"),
         caption=text,
     )
     try:
-        await callback.message.edit_media(media, reply_markup=customize_kb())
+        await callback.message.edit_media(media, reply_markup=customize_kb(lang))
     except Exception:
         await callback.message.answer_photo(
             BufferedInputFile(img.getvalue(), "qr_preview.png"),
             caption=text,
-            reply_markup=customize_kb(),
+            reply_markup=customize_kb(lang),
         )
 
 
 @router.callback_query(F.data == "gen_start")
 async def start_generation(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     channels = await db.get_channels()
     if channels:
         not_subbed = await check_subscriptions(bot, callback.from_user.id, channels)
         if not_subbed:
             await callback.message.edit_text(
-                f"{emoji('shield')} Subscribe to all channels first:",
-                reply_markup=subscription_kb(not_subbed),
+                t("sub_required", lang),
+                reply_markup=subscription_kb(lang, not_subbed),
             )
             await state.set_state(QRGeneration.choosing_type)
             return
     await callback.message.edit_text(
-        f"{emoji('lightning')} Select QR code type:",
-        reply_markup=qr_type_kb(),
+        t("gen_start", lang),
+        reply_markup=qr_type_kb(lang),
     )
     await state.set_state(QRGeneration.choosing_type)
 
 
 @router.callback_query(F.data == "sub_check")
 async def check_sub(callback: CallbackQuery, state: FSMContext, bot: Bot):
-    await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     channels = await db.get_channels()
     not_subbed = await check_subscriptions(bot, callback.from_user.id, channels) if channels else []
     if not_subbed:
-        await callback.answer("You haven't subscribed yet!", show_alert=True)
+        await callback.answer(t("sub_not_yet", lang), show_alert=True)
         return
+    await callback.answer()
     await callback.message.edit_text(
-        f"{emoji('lightning')} Select QR code type:",
-        reply_markup=qr_type_kb(),
+        t("gen_start", lang),
+        reply_markup=qr_type_kb(lang),
     )
     await state.set_state(QRGeneration.choosing_type)
 
@@ -136,23 +122,27 @@ async def check_sub(callback: CallbackQuery, state: FSMContext, bot: Bot):
 @router.callback_query(F.data.startswith("type_"), StateFilter(QRGeneration.choosing_type))
 async def select_type(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     qr_type = callback.data.replace("type_", "")
     await state.update_data(qr_type=qr_type)
     if qr_type == "wifi":
-        await callback.message.edit_text("📶 Send me the WiFi network name (SSID):")
+        await callback.message.edit_text(t("wifi_ssid", lang))
         await state.set_state(QRGeneration.entering_wifi_ssid)
     elif qr_type == "vcard":
-        await callback.message.edit_text("👤 Send me the contact name:")
+        await callback.message.edit_text(t("vcard_name", lang))
         await state.set_state(QRGeneration.entering_vcard_name)
     elif qr_type in TYPE_PROMPTS:
-        await callback.message.edit_text(TYPE_PROMPTS[qr_type])
+        await callback.message.edit_text(t(TYPE_PROMPTS[qr_type], lang))
         await state.set_state(QRGeneration.entering_data)
     else:
-        await callback.message.edit_text("Unknown type.", reply_markup=qr_type_kb())
+        await callback.message.edit_text(
+            t("gen_start", lang), reply_markup=qr_type_kb(lang),
+        )
 
 
 @router.message(QRGeneration.entering_data)
 async def process_simple_data(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     data = await state.get_data()
     qr_type = data.get("qr_type", "text")
     qr_data = encode_qr_data(qr_type, message.text)
@@ -162,29 +152,32 @@ async def process_simple_data(message: Message, state: FSMContext):
     img = qr_engine.generate(qr_data, settings)
     await message.answer_photo(
         BufferedInputFile(img.getvalue(), "qr_preview.png"),
-        caption=fmt_text(data),
-        reply_markup=customize_kb(),
+        caption=fmt_text(data, lang),
+        reply_markup=customize_kb(lang),
     )
     await state.set_state(QRGeneration.customizing)
 
 
 @router.message(QRGeneration.entering_wifi_ssid)
 async def wifi_ssid(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     await state.update_data(wifi_ssid=message.text)
-    await message.answer("🔑 Send me the WiFi password (or '-' if open):")
+    await message.answer(t("wifi_password", lang))
     await state.set_state(QRGeneration.entering_wifi_password)
 
 
 @router.message(QRGeneration.entering_wifi_password)
 async def wifi_password(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     await state.update_data(wifi_password=message.text)
-    await message.answer("🔒 Select encryption type:", reply_markup=wifi_enc_kb())
+    await message.answer(t("wifi_enc", lang), reply_markup=wifi_enc_kb(lang))
     await state.set_state(QRGeneration.entering_wifi_encryption)
 
 
 @router.callback_query(F.data.startswith("wifi_enc_"), StateFilter(QRGeneration.entering_wifi_encryption))
 async def wifi_enc(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     enc_map = {"wifi_enc_wpa": "WPA", "wifi_enc_wep": "WEP", "wifi_enc_open": "nopass"}
     enc = enc_map.get(callback.data, "WPA")
     data = await state.get_data()
@@ -200,28 +193,31 @@ async def wifi_enc(callback: CallbackQuery, state: FSMContext):
     img = qr_engine.generate(qr_data, settings)
     await callback.message.answer_photo(
         BufferedInputFile(img.getvalue(), "qr_preview.png"),
-        caption=fmt_text(data),
-        reply_markup=customize_kb(),
+        caption=fmt_text(data, lang),
+        reply_markup=customize_kb(lang),
     )
     await state.set_state(QRGeneration.customizing)
 
 
 @router.message(QRGeneration.entering_vcard_name)
 async def vcard_name(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     await state.update_data(vcard_name=message.text)
-    await message.answer("📞 Send me the contact phone number:")
+    await message.answer(t("vcard_phone", lang))
     await state.set_state(QRGeneration.entering_vcard_phone)
 
 
 @router.message(QRGeneration.entering_vcard_phone)
 async def vcard_phone(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     await state.update_data(vcard_phone=message.text)
-    await message.answer("📧 Send me the email (or '-' to skip):")
+    await message.answer(t("vcard_email", lang))
     await state.set_state(QRGeneration.entering_vcard_email)
 
 
 @router.message(QRGeneration.entering_vcard_email)
 async def vcard_email(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     data = await state.get_data()
     email = message.text if message.text != "-" else ""
     qr_data = encode_qr_data("vcard", "", {
@@ -235,8 +231,8 @@ async def vcard_email(message: Message, state: FSMContext):
     img = qr_engine.generate(qr_data, settings)
     await message.answer_photo(
         BufferedInputFile(img.getvalue(), "qr_preview.png"),
-        caption=fmt_text(data),
-        reply_markup=customize_kb(),
+        caption=fmt_text(data, lang),
+        reply_markup=customize_kb(lang),
     )
     await state.set_state(QRGeneration.customizing)
 
@@ -244,38 +240,44 @@ async def vcard_email(message: Message, state: FSMContext):
 @router.callback_query(F.data == "cust_fill", QRGeneration.customizing)
 async def show_fill(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=fill_color_kb())
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=fill_color_kb(lang))
 
 
 @router.callback_query(F.data == "cust_bg", QRGeneration.customizing)
 async def show_bg(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=bg_color_kb())
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=bg_color_kb(lang))
 
 
 @router.callback_query(F.data == "cust_grad", QRGeneration.customizing)
 async def show_grad(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=gradient_kb())
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=gradient_kb(lang))
 
 
 @router.callback_query(F.data == "cust_dot", QRGeneration.customizing)
 async def show_dot(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=dot_style_kb())
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=dot_style_kb(lang))
 
 
 @router.callback_query(F.data == "cust_icon", QRGeneration.customizing)
 async def show_icon(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     data = await state.get_data()
-    await callback.message.edit_reply_markup(reply_markup=icon_kb(bool(data.get("icon_path"))))
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=icon_kb(lang, bool(data.get("icon_path"))))
 
 
 @router.callback_query(F.data == "cust_fmt", QRGeneration.customizing)
 async def show_fmt(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=format_kb())
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.edit_reply_markup(reply_markup=format_kb(lang))
 
 
 @router.callback_query(F.data == "cust_back", QRGeneration.customizing)
@@ -287,8 +289,9 @@ async def cust_back(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("fill_"), QRGeneration.customizing)
 async def select_fill(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     if callback.data == "fill_custom":
-        await callback.message.answer("🎨 Send me the fill color as HEX (e.g., #FF5500):")
+        await callback.message.answer(t("enter_hex_fill", lang))
         await state.update_data(color_target="fill")
         await state.set_state(QRGeneration.entering_custom_color)
         return
@@ -300,8 +303,9 @@ async def select_fill(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("bg_"), QRGeneration.customizing)
 async def select_bg(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     if callback.data == "bg_custom":
-        await callback.message.answer("🎨 Send me the background color as HEX (e.g., #FF5500):")
+        await callback.message.answer(t("enter_hex_bg", lang))
         await state.update_data(color_target="bg")
         await state.set_state(QRGeneration.entering_custom_color)
         return
@@ -320,9 +324,10 @@ async def select_bg(callback: CallbackQuery, state: FSMContext):
 
 @router.message(QRGeneration.entering_custom_color)
 async def custom_color(message: Message, state: FSMContext):
+    lang = await db.get_user_lang(message.from_user.id)
     raw = message.text.strip().lstrip("#")
     if len(raw) not in (3, 6) or not all(c in "0123456789abcdefABCDEF" for c in raw):
-        await message.answer("❌ Invalid HEX. Try again (e.g., #FF5500):")
+        await message.answer(t("invalid_hex", lang))
         return
     hex_color = f"#{raw}"
     data = await state.get_data()
@@ -339,8 +344,8 @@ async def custom_color(message: Message, state: FSMContext):
         img = qr_engine.generate(qr_data, settings)
         await message.answer_photo(
             BufferedInputFile(img.getvalue(), "qr_preview.png"),
-            caption=fmt_text(data),
-            reply_markup=customize_kb(),
+            caption=fmt_text(data, lang),
+            reply_markup=customize_kb(lang),
         )
 
 
@@ -392,7 +397,8 @@ async def select_fmt(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "icon_upload", QRGeneration.customizing)
 async def upload_icon(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    await callback.message.answer("📷 Send me the icon image (PNG/JPG):")
+    lang = await db.get_user_lang(callback.from_user.id)
+    await callback.message.answer(t("upload_icon_prompt", lang))
     await state.set_state(QRGeneration.waiting_icon_upload)
 
 
@@ -409,6 +415,7 @@ async def remove_icon(callback: CallbackQuery, state: FSMContext):
 
 @router.message(QRGeneration.waiting_icon_upload, F.photo)
 async def process_icon(message: Message, state: FSMContext, bot: Bot):
+    lang = await db.get_user_lang(message.from_user.id)
     photo = message.photo[-1]
     os.makedirs("data/icons", exist_ok=True)
     icon_path = f"data/icons/{message.from_user.id}_{photo.file_unique_id}.png"
@@ -421,8 +428,8 @@ async def process_icon(message: Message, state: FSMContext, bot: Bot):
         img = qr_engine.generate(qr_data, settings)
         await message.answer_photo(
             BufferedInputFile(img.getvalue(), "qr_preview.png"),
-            caption=fmt_text(data),
-            reply_markup=customize_kb(),
+            caption=fmt_text(data, lang),
+            reply_markup=customize_kb(lang),
         )
     await state.set_state(QRGeneration.customizing)
 
@@ -430,10 +437,14 @@ async def process_icon(message: Message, state: FSMContext, bot: Bot):
 @router.callback_query(F.data == "cust_generate", QRGeneration.customizing)
 async def generate_final(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     data = await state.get_data()
     qr_data = data.get("qr_data", "")
     if not qr_data:
-        await callback.message.edit_text("Error. Start over.", reply_markup=main_menu_kb())
+        await callback.message.edit_text(
+            t("error_start_over", lang),
+            reply_markup=main_menu_kb(lang, callback.from_user.id in ADMINS),
+        )
         await state.clear()
         return
 
@@ -441,7 +452,7 @@ async def generate_final(callback: CallbackQuery, state: FSMContext):
     settings = build_settings(data)
 
     try:
-        await callback.message.edit_caption(f"{ec('lightning')} Generating...")
+        await callback.message.edit_caption(t("generating", lang))
     except Exception:
         pass
 
@@ -451,14 +462,14 @@ async def generate_final(callback: CallbackQuery, state: FSMContext):
     if fmt == "svg":
         await callback.message.answer_document(
             BufferedInputFile(img.getvalue(), "qr_code.svg"),
-            caption=f"{emoji('check')} Your SVG QR code!",
-            reply_markup=main_menu_kb(is_admin),
+            caption=t("qr_ready_svg", lang),
+            reply_markup=main_menu_kb(lang, is_admin),
         )
     else:
         await callback.message.answer_photo(
             BufferedInputFile(img.getvalue(), "qr_code.png"),
-            caption=f"{emoji('check')} Your QR code!",
-            reply_markup=main_menu_kb(is_admin),
+            caption=t("qr_ready_png", lang),
+            reply_markup=main_menu_kb(lang, is_admin),
         )
 
     await db.add_qr_code(callback.from_user.id, data.get("qr_type", "text"), data.get("raw_data", ""), fmt)
