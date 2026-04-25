@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from ..config import ADMINS
 from ..database import db
 from ..i18n import t
+from ..emojis import pe, ec
 from ..keyboards import main_menu_kb, language_kb
 from ..states import LanguageSelect
 
@@ -53,8 +54,9 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "change_lang")
 async def change_lang(callback: CallbackQuery):
     await callback.answer()
+    lang = await db.get_user_lang(callback.from_user.id)
     await callback.message.edit_text(
-        t("choose_lang", await db.get_user_lang(callback.from_user.id)),
+        t("choose_lang", lang),
         reply_markup=language_kb(),
     )
 

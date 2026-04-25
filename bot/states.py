@@ -15,6 +15,7 @@ class QRGeneration(StatesGroup):
     choosing_bg_color = State()
     entering_custom_color = State()
     waiting_icon_upload = State()
+    choosing_resolution = State()
 
 
 class AdminBroadcast(StatesGroup):

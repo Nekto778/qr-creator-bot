@@ -5,6 +5,7 @@ from ..states import AdminBroadcast, AdminChannels
 from ..config import ADMINS
 from ..database import db
 from ..i18n import t
+from ..emojis import pe, ec
 from ..keyboards import admin_panel_kb, admin_channels_kb, broadcast_confirm_kb, main_menu_kb
 
 router = Router()
@@ -121,7 +122,7 @@ async def admin_channels(callback: CallbackQuery):
     else:
         text = t("ch_list", lang)
         for ch_id, ch_title, _ in channels:
-            text += f"📢 {ch_title} (ID: <code>{ch_id}</code>)\n"
+            text += f"{pe('loudspeaker')} {ch_title} (ID: <code>{ch_id}</code>)\n"
         await callback.message.edit_text(text, reply_markup=admin_channels_kb(lang, channels))
 
 
@@ -169,7 +170,7 @@ async def remove_channel(callback: CallbackQuery):
     if channels:
         text = t("ch_list", lang)
         for ch_id, ch_title, _ in channels:
-            text += f"📢 {ch_title} (ID: <code>{ch_id}</code>)\n"
+            text += f"{pe('loudspeaker')} {ch_title} (ID: <code>{ch_id}</code>)\n"
         await callback.message.edit_text(text, reply_markup=admin_channels_kb(lang, channels))
     else:
         await callback.message.edit_text(

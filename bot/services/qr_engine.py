@@ -39,6 +39,7 @@ class QREngine:
         "bg_gradient_direction": "vertical",
         "icon_path": None,
         "icon_size": 0.2,
+        "resolution": 0,
     }
 
     @staticmethod
@@ -53,9 +54,7 @@ class QREngine:
         sr, sg, sb = self.parse_hex(start_hex)
         er, eg, eb = self.parse_hex(end_hex)
         arr = np.zeros((h, w, 4), dtype=np.uint8)
-
         y_idx, x_idx = np.mgrid[0:h, 0:w]
-
         if direction == "horizontal":
             t = x_idx / max(w - 1, 1)
         elif direction == "vertical":
@@ -69,7 +68,6 @@ class QREngine:
             t = np.clip(dist / max_r, 0, 1)
         else:
             t = x_idx / max(w - 1, 1)
-
         arr[:, :, 0] = (sr + (er - sr) * t).astype(np.uint8)
         arr[:, :, 1] = (sg + (eg - sg) * t).astype(np.uint8)
         arr[:, :, 2] = (sb + (eb - sb) * t).astype(np.uint8)
@@ -101,7 +99,6 @@ class QREngine:
         qr = qrcode.QRCode(error_correction=ec, box_size=10, border=4)
         qr.add_data(data)
         qr.make(fit=True)
-
         drawer_cls = self.DOT_STYLES.get(s["dot_style"], pil_drawers.SquareModuleDrawer)
         img = qr.make_image(
             image_factory=StyledPilImage,
@@ -109,11 +106,9 @@ class QREngine:
             fill_color="black",
             back_color="white",
         ).get_image().convert("RGBA")
-
         arr = np.array(img, dtype=np.float64)
         brightness = np.mean(arr[:, :, :3], axis=2)
         module_mask = (255 - brightness) / 255.0
-
         if s.get("bg_transparent"):
             bg_arr = np.zeros_like(arr)
         elif s.get("bg_gradient_enabled"):
@@ -128,7 +123,6 @@ class QREngine:
             bg_arr[:, :, 1] = g
             bg_arr[:, :, 2] = b
             bg_arr[:, :, 3] = 255
-
         if s.get("gradient_enabled"):
             fg_img = self.create_gradient(
                 img.size, s["gradient_start"], s["gradient_end"], s["gradient_direction"]
@@ -141,16 +135,16 @@ class QREngine:
             fg_arr[:, :, 1] = g
             fg_arr[:, :, 2] = b
             fg_arr[:, :, 3] = 255
-
         mask_3d = module_mask[:, :, np.newaxis]
         result_arr = (fg_arr * mask_3d + bg_arr * (1 - mask_3d)).astype(np.uint8)
         result = Image.fromarray(result_arr, "RGBA")
-
         if s.get("icon_path"):
             result = self._overlay_icon(result, s["icon_path"], s.get("icon_size", 0.2))
-
+        resolution = s.get("resolution", 0)
+        if resolution and resolution > 0:
+            result = result.resize((resolution, resolution), Image.LANCZOS)
         buf = io.BytesIO()
-        result.save(buf, format="PNG")
+        result.save(buf, format="PNG", compress_level=0)
         buf.seek(0)
         buf.name = "qr_code.png"
         return buf

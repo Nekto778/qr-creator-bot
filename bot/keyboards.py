@@ -1,41 +1,34 @@
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from .emojis import ec
 from .i18n import t
 
 COLOR_PRESETS = [
-    ("⬛ Black|#000000", "⬛ Чёрный|#000000"),
-    ("🟥 Red|#FF0000", "🟥 Красный|#FF0000"),
-    ("🟧 Orange|#FF8C00", "🟧 Оранжевый|#FF8C00"),
-    ("🟨 Yellow|#FFD700", "🟨 Жёлтый|#FFD700"),
-    ("🟩 Green|#00AA00", "🟩 Зелёный|#00AA00"),
-    ("🟦 Blue|#0066FF", "🟦 Синий|#0066FF"),
-    ("🟪 Purple|#8B00FF", "🟪 Фиолетовый|#8B00FF"),
-    ("🩷 Pink|#FF69B4", "🩷 Розовый|#FF69B4"),
-    ("⬜ White|#FFFFFF", "⬜ Белый|#FFFFFF"),
-    ("🩶 Gray|#808080", "🩶 Серый|#808080"),
+    (f"{ec('dot_black')} Black", "⬛ Чёрный", "#000000"),
+    (f"{ec('red')} Red", "🟥 Красный", "#FF0000"),
+    (f"{ec('orange')} Orange", "🟧 Оранжевый", "#FF8C00"),
+    (f"{ec('yellow')} Yellow", "🟨 Жёлтый", "#FFD700"),
+    (f"{ec('green')} Green", "🟩 Зелёный", "#00AA00"),
+    (f"{ec('blue')} Blue", "🟦 Синий", "#0066FF"),
+    (f"{ec('purple')} Purple", "🟪 Фиолетовый", "#8B00FF"),
+    (f"{ec('pink')} Pink", "🩷 Розовый", "#FF69B4"),
+    (f"{ec('dot_white')} White", "⬜ Белый", "#FFFFFF"),
+    (f"{ec('gray')} Gray", "🩶 Серый", "#808080"),
 ]
 
-DOT_STYLES = [
-    ("⬛ Square|square", "⬛ Квадрат|square"),
-    ("🔲 Rounded|rounded", "🔲 Скруглённый|rounded"),
-    ("⚫ Circle|circle", "⚫ Круглый|circle"),
-    ("⬜ Gapped|gapped", "⬜ С зазором|gapped"),
+DOT_STYLES_LIST = [
+    (f"{ec('dot_black')} Square", "⬛ Квадрат", "square"),
+    (f"{ec('dot_round')} Rounded", "🔲 Скруглённый", "rounded"),
+    (f"{ec('dot_circle')} Circle", "⚫ Круглый", "circle"),
+    (f"{ec('dot_white')} Gapped", "⬜ С зазором", "gapped"),
 ]
 
-
-def _cp(lang, idx):
-    pair = COLOR_PRESETS[idx]
-    return pair[0] if lang == "en" else pair[1]
-
-
-def _ds(lang, idx):
-    pair = DOT_STYLES[idx]
-    return pair[0] if lang == "en" else pair[1]
+RESOLUTIONS = [256, 512, 1024, 2048, 4096]
 
 
 def language_kb():
     b = InlineKeyboardBuilder()
-    b.button(text="🇬🇧 English", callback_data="lang_en")
-    b.button(text="🇷🇺 Русский", callback_data="lang_ru")
+    b.button(text=f"{ec('flag_gb')} English", callback_data="lang_en")
+    b.button(text=f"{ec('flag_ru')} Русский", callback_data="lang_ru")
     b.adjust(2)
     return b.as_markup()
 
@@ -79,9 +72,9 @@ def customize_kb(lang: str = "en"):
 
 def fill_color_kb(lang: str = "en"):
     b = InlineKeyboardBuilder()
-    for i in range(len(COLOR_PRESETS)):
-        parts = _cp(lang, i).split("|")
-        b.button(text=parts[0], callback_data=f"fill_{parts[1]}")
+    for en_name, ru_name, hex_val in COLOR_PRESETS:
+        label = ru_name if lang == "ru" else en_name
+        b.button(text=label, callback_data=f"fill_{hex_val}")
     b.button(text=t("custom_hex", lang), callback_data="fill_custom")
     b.button(text=t("back", lang), callback_data="cust_back")
     b.adjust(5, 5, 2)
@@ -90,9 +83,9 @@ def fill_color_kb(lang: str = "en"):
 
 def bg_color_kb(lang: str = "en"):
     b = InlineKeyboardBuilder()
-    for i in range(len(COLOR_PRESETS)):
-        parts = _cp(lang, i).split("|")
-        b.button(text=parts[0], callback_data=f"bg_{parts[1]}")
+    for en_name, ru_name, hex_val in COLOR_PRESETS:
+        label = ru_name if lang == "ru" else en_name
+        b.button(text=label, callback_data=f"bg_{hex_val}")
     b.button(text=t("custom_hex", lang), callback_data="bg_custom")
     b.button(text=t("transparent", lang), callback_data="bg_transparent")
     b.button(text=t("bg_gradient", lang), callback_data="bg_gradient")
@@ -105,19 +98,17 @@ def gradient_kb(lang: str = "en"):
     b = InlineKeyboardBuilder()
     b.button(text=t("enable", lang), callback_data="grad_on")
     b.button(text=t("disable", lang), callback_data="grad_off")
-    for i in range(6):
-        parts = _cp(lang, i).split("|")
-        label = parts[0].split(" ", 1)[1] if " " in parts[0] else parts[0]
-        b.button(text=f"▶ {label}", callback_data=f"grds_{parts[1]}")
-    for i in range(6):
-        parts = _cp(lang, i).split("|")
-        label = parts[0].split(" ", 1)[1] if " " in parts[0] else parts[0]
-        b.button(text=f"◀ {label}", callback_data=f"grde_{parts[1]}")
-    dir_names = {
-        "en": [("➡️ Horiz", "horizontal"), ("⬇️ Vert", "vertical"), ("↗️ Diag", "diagonal"), ("⭕ Radial", "radial")],
-        "ru": [("➡️ Гориз", "horizontal"), ("⬇️ Верт", "vertical"), ("↗️ Диаг", "diagonal"), ("⭕ Рад", "radial")],
-    }
-    for dn, dv in dir_names.get(lang, dir_names["en"]):
+    for en_name, ru_name, hex_val in COLOR_PRESETS[:6]:
+        label = (ru_name if lang == "ru" else en_name).split(" ", 1)[1]
+        b.button(text=f"▶ {label}", callback_data=f"grds_{hex_val}")
+    for en_name, ru_name, hex_val in COLOR_PRESETS[:6]:
+        label = (ru_name if lang == "ru" else en_name).split(" ", 1)[1]
+        b.button(text=f"◀ {label}", callback_data=f"grde_{hex_val}")
+    if lang == "ru":
+        dirs = [("➡️ Гориз", "horizontal"), ("⬇️ Верт", "vertical"), ("↗️ Диаг", "diagonal"), ("⭕ Рад", "radial")]
+    else:
+        dirs = [("➡️ Horiz", "horizontal"), ("⬇️ Vert", "vertical"), ("↗️ Diag", "diagonal"), ("⭕ Radial", "radial")]
+    for dn, dv in dirs:
         b.button(text=dn, callback_data=f"grdd_{dv}")
     b.button(text=t("back", lang), callback_data="cust_back")
     b.adjust(2, 3, 3, 4, 1)
@@ -126,9 +117,9 @@ def gradient_kb(lang: str = "en"):
 
 def dot_style_kb(lang: str = "en"):
     b = InlineKeyboardBuilder()
-    for i in range(len(DOT_STYLES)):
-        parts = _ds(lang, i).split("|")
-        b.button(text=parts[0], callback_data=f"dot_{parts[1]}")
+    for en_name, ru_name, val in DOT_STYLES_LIST:
+        label = ru_name if lang == "ru" else en_name
+        b.button(text=label, callback_data=f"dot_{val}")
     b.button(text=t("back", lang), callback_data="cust_back")
     b.adjust(2, 2, 1)
     return b.as_markup()
@@ -140,6 +131,16 @@ def format_kb(lang: str = "en"):
     b.button(text=t("svg_vector", lang), callback_data="fmt_svg")
     b.button(text=t("back", lang), callback_data="cust_back")
     b.adjust(2, 1)
+    return b.as_markup()
+
+
+def resolution_kb(lang: str = "en"):
+    b = InlineKeyboardBuilder()
+    for res in RESOLUTIONS:
+        label = f"{res}×{res}"
+        b.button(text=label, callback_data=f"res_{res}")
+    b.button(text=t("back", lang), callback_data="cust_back")
+    b.adjust(3, 2, 1)
     return b.as_markup()
 
 
@@ -159,13 +160,13 @@ def icon_kb(lang: str = "en", has_icon: bool = False):
 def wifi_enc_kb(lang: str = "en"):
     b = InlineKeyboardBuilder()
     if lang == "ru":
-        b.button(text="🔒 WPA/WPA2", callback_data="wifi_enc_wpa")
-        b.button(text="🔑 WEP", callback_data="wifi_enc_wep")
-        b.button(text="🔓 Открытая", callback_data="wifi_enc_open")
+        b.button(text=f"{ec('lock')} WPA/WPA2", callback_data="wifi_enc_wpa")
+        b.button(text=f"{ec('key')} WEP", callback_data="wifi_enc_wep")
+        b.button(text=f"{ec('unlock')} Открытая", callback_data="wifi_enc_open")
     else:
-        b.button(text="🔒 WPA/WPA2", callback_data="wifi_enc_wpa")
-        b.button(text="🔑 WEP", callback_data="wifi_enc_wep")
-        b.button(text="🔓 Open", callback_data="wifi_enc_open")
+        b.button(text=f"{ec('lock')} WPA/WPA2", callback_data="wifi_enc_wpa")
+        b.button(text=f"{ec('key')} WEP", callback_data="wifi_enc_wep")
+        b.button(text=f"{ec('unlock')} Open", callback_data="wifi_enc_open")
     b.adjust(3)
     return b.as_markup()
 
@@ -184,7 +185,7 @@ def admin_channels_kb(lang: str = "en", channels: list = None):
     channels = channels or []
     b = InlineKeyboardBuilder()
     for ch_id, ch_title, invite_link in channels:
-        label = f"❌ {ch_title}"
+        label = f"{ec('cross')} {ch_title}"
         b.button(text=label, callback_data=f"rmch_{ch_id}")
     b.button(text=t("ch_add", lang), callback_data="admin_add_channel")
     b.button(text=t("back", lang), callback_data="admin_panel")
@@ -208,7 +209,7 @@ def subscription_kb(lang: str = "en", channels: list = None):
     b = InlineKeyboardBuilder()
     for ch_id, ch_title, invite_link in channels:
         url = invite_link if invite_link else f"https://t.me/{ch_title}"
-        b.button(text=f"📢 {ch_title}", url=url)
+        b.button(text=f"{ec('loudspeaker')} {ch_title}", url=url)
     b.button(text=t("sub_check", lang), callback_data="sub_check")
     b.adjust(1)
     return b.as_markup()

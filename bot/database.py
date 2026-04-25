@@ -14,8 +14,7 @@ class Database:
                 username TEXT,
                 first_name TEXT,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_blocked INTEGER DEFAULT 0,
-                language TEXT DEFAULT 'en'
+                is_blocked INTEGER DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS qr_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,6 +40,11 @@ class Database:
             );
         """)
         await self.db.commit()
+        try:
+            await self.db.execute("ALTER TABLE users ADD COLUMN language TEXT DEFAULT 'en'")
+            await self.db.commit()
+        except Exception:
+            pass
 
     async def add_user(self, user_id, username, first_name, language="en"):
         await self.db.execute(
@@ -50,11 +54,14 @@ class Database:
         await self.db.commit()
 
     async def get_user_lang(self, user_id) -> str:
-        async with self.db.execute(
-            "SELECT language FROM users WHERE user_id = ?", (user_id,)
-        ) as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else "en"
+        try:
+            async with self.db.execute(
+                "SELECT language FROM users WHERE user_id = ?", (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                return row[0] if row and row[0] else "en"
+        except Exception:
+            return "en"
 
     async def set_user_lang(self, user_id, language):
         await self.db.execute(

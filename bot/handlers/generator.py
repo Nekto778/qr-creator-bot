@@ -5,10 +5,11 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from ..states import QRGeneration
 from ..i18n import t, TYPE_NAMES, TYPE_PROMPTS
+from ..emojis import pe, ec
 from ..keyboards import (
     qr_type_kb, customize_kb, fill_color_kb, bg_color_kb,
     gradient_kb, dot_style_kb, format_kb, icon_kb,
-    wifi_enc_kb, main_menu_kb, subscription_kb,
+    wifi_enc_kb, main_menu_kb, subscription_kb, resolution_kb,
 )
 from ..config import ADMINS
 from ..database import db
@@ -18,7 +19,7 @@ from ..services.subscription import check_subscriptions
 router = Router()
 
 
-def build_settings(data: dict, force_png: bool = False) -> dict:
+def build_settings(data: dict, force_png: bool = False, force_resolution: int = 0) -> dict:
     return {
         "fill_color": data.get("fill_color", "#000000"),
         "bg_color": data.get("bg_color", "#FFFFFF"),
@@ -36,6 +37,7 @@ def build_settings(data: dict, force_png: bool = False) -> dict:
         "bg_gradient_direction": data.get("bg_gradient_direction", "vertical"),
         "icon_path": data.get("icon_path"),
         "icon_size": 0.2,
+        "resolution": force_resolution,
     }
 
 
@@ -44,11 +46,13 @@ def fmt_text(data: dict, lang: str) -> str:
     qr_type = TYPE_NAMES.get(qr_type_key, {}).get(lang, "QR")
     fill = data.get("fill_color", "#000000")
     bg = "Transparent" if data.get("bg_transparent") else data.get("bg_color", "#FFFFFF")
-    grad = "✅" if data.get("gradient_enabled") else "❌"
-    bg_grad = "✅" if data.get("bg_gradient_enabled") else "❌"
+    grad = pe("check") if data.get("gradient_enabled") else pe("cross")
+    bg_grad = pe("check") if data.get("bg_gradient_enabled") else pe("cross")
     dot = data.get("dot_style", "square").title()
     fmt = data.get("format", "png").upper()
-    icon = "✅" if data.get("icon_path") else "❌"
+    icon = pe("check") if data.get("icon_path") else pe("cross")
+    res = data.get("resolution", 0)
+    res_str = f"{res}×{res}" if res else "auto"
     return t("qr_settings", lang,
              qr_type=qr_type, fill=fill, bg=bg,
              grad=grad, bg_grad=bg_grad, dot=dot, fmt=fmt, icon=icon)
@@ -135,9 +139,7 @@ async def select_type(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(t(TYPE_PROMPTS[qr_type], lang))
         await state.set_state(QRGeneration.entering_data)
     else:
-        await callback.message.edit_text(
-            t("gen_start", lang), reply_markup=qr_type_kb(lang),
-        )
+        await callback.message.edit_text(t("gen_start", lang), reply_markup=qr_type_kb(lang))
 
 
 @router.message(QRGeneration.entering_data)
@@ -391,6 +393,24 @@ async def select_dot(callback: CallbackQuery, state: FSMContext):
 async def select_fmt(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.update_data(format=callback.data.replace("fmt_", ""))
+    if callback.data == "fmt_png":
+        lang = await db.get_user_lang(callback.from_user.id)
+        data = await state.get_data()
+        await state.set_state(QRGeneration.choosing_resolution)
+        await callback.message.edit_text(
+            t("select_resolution", lang),
+            reply_markup=resolution_kb(lang),
+        )
+        return
+    await show_customize(callback, state)
+
+
+@router.callback_query(F.data.startswith("res_"), StateFilter(QRGeneration.choosing_resolution))
+async def select_resolution(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    resolution = int(callback.data.replace("res_", ""))
+    await state.update_data(resolution=resolution)
+    await state.set_state(QRGeneration.customizing)
     await show_customize(callback, state)
 
 
@@ -449,7 +469,21 @@ async def generate_final(callback: CallbackQuery, state: FSMContext):
         return
 
     fmt = data.get("format", "png")
-    settings = build_settings(data)
+    resolution = data.get("resolution", 0)
+
+    if fmt == "png" and not resolution:
+        await state.set_state(QRGeneration.choosing_resolution)
+        try:
+            await callback.message.edit_caption(t("select_resolution", lang))
+        except Exception:
+            pass
+        await callback.message.answer(
+            t("select_resolution", lang),
+            reply_markup=resolution_kb(lang),
+        )
+        return
+
+    settings = build_settings(data, force_resolution=resolution)
 
     try:
         await callback.message.edit_caption(t("generating", lang))
@@ -466,8 +500,8 @@ async def generate_final(callback: CallbackQuery, state: FSMContext):
             reply_markup=main_menu_kb(lang, is_admin),
         )
     else:
-        await callback.message.answer_photo(
-            BufferedInputFile(img.getvalue(), "qr_code.png"),
+        await callback.message.answer_document(
+            BufferedInputFile(img.getvalue(), f"qr_{resolution}x{resolution}.png"),
             caption=t("qr_ready_png", lang),
             reply_markup=main_menu_kb(lang, is_admin),
         )

@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from aiogram import Router, F, Bot
 from aiogram.types import (
     InlineQuery,
@@ -9,8 +10,10 @@ from aiogram.types import (
 )
 from ..config import STORAGE_CHANNEL_ID
 from ..services.qr_engine import qr_engine
+from ..emojis import pe
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 _cache: dict[str, str] = {}
 
@@ -22,7 +25,7 @@ async def inline_qr(query: InlineQuery, bot: Bot):
         await query.answer(
             [],
             cache_time=10,
-            switch_pm_text="⚡ QR Generator",
+            switch_pm_text=f"{pe('lightning')} QR Generator",
             switch_pm_parameter="start",
         )
         return
@@ -39,13 +42,13 @@ async def inline_qr(query: InlineQuery, bot: Bot):
         await query.answer(results, cache_time=300)
         return
 
-    img = qr_engine.generate(text)
+    img = qr_engine.generate(text, {"format": "png"})
 
-    if STORAGE_CHANNEL_ID:
+    if STORAGE_CHANNEL_ID and STORAGE_CHANNEL_ID != 0:
         try:
             msg = await bot.send_photo(
-                STORAGE_CHANNEL_ID,
-                BufferedInputFile(img.getvalue(), "qr.png"),
+                chat_id=STORAGE_CHANNEL_ID,
+                photo=BufferedInputFile(img.getvalue(), "qr.png"),
             )
             file_id = msg.photo[-1].file_id
             _cache[cache_key] = file_id
@@ -63,16 +66,16 @@ async def inline_qr(query: InlineQuery, bot: Bot):
             except Exception:
                 pass
             return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Inline upload to storage channel failed: %s", e)
 
     results = [
         InlineQueryResultArticle(
             id=cache_key[:8],
-            title="⚡ QR Code",
+            title=f"{pe('lightning')} QR Code",
             description=f"QR: {text[:50]}",
             input_message_content=InputTextMessageContent(
-                message_text=f"⚡ QR Code: <code>{text}</code>",
+                message_text=f"{pe('lightning')} QR Code for: <code>{text}</code>",
                 parse_mode="HTML",
             ),
         )
